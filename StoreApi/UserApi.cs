@@ -121,13 +121,183 @@ namespace StoreApi
                 }
                 var newAccessToken = GenerateAccessToken(pers);
 
-                
-
                 return Results.Content(newAccessToken); 
             });
 
-           
 
+            app.MapGet("/warehouse", () =>
+            {
+                using var db = new PostgresContext();
+                var warehouseItems = db.Storebalances
+                    .Include(sb => sb.Store)
+                    .Include(sb => sb.Product)
+                    .Select(sb => new
+                    {
+                        Id = sb.StoreId * 10000 + sb.ProductId, // Уникальный ID на основе составного ключа
+                        StoreName = sb.Store.StoreAddress,
+                        ProductName = sb.Product.ProductName,
+                        Quantity = sb.Quantity
+                    })
+                    .ToList();
+
+                return Results.Json(warehouseItems);
+            });
+
+            app.MapPost("/warehouseupdate", async (WarehouseItem updateItem) =>
+            {
+                using var db = new PostgresContext();
+
+                var store = await db.Stores.FirstOrDefaultAsync(s => s.StoreAddress == updateItem.StoreName);
+                var product = await db.Products.FirstOrDefaultAsync(p => p.ProductName == updateItem.ProductName);
+
+                if (store == null || product == null)
+                    return Results.NotFound("Магазин или продукт не найден");
+
+                var balance = await db.Storebalances.FirstOrDefaultAsync(sb => sb.StoreId == store.StoreId && sb.ProductId == product.ProductId);
+
+                if (balance == null)
+                    return Results.NotFound("Запись склада не найдена");
+
+                balance.Quantity = updateItem.Quantity;
+                await db.SaveChangesAsync();
+                return Results.Ok("Обновление успешно");
+
+            });
+
+            // Получение списка клиентов
+            app.MapGet("/clients", () =>
+            {
+                PostgresContext db = new PostgresContext();
+                var clients = db.Clients
+                    .Select(c => new
+                    {
+                        ClientId = c.ClientId,
+                        Name = c.ClientName,
+                        ContactInfo = c.ContactInfo
+                    })
+                    .ToList();
+
+                return Results.Json(clients);
+            });
+
+            // Обновление клиента
+            app.MapPost("/clientsupdate", async (ClientDto clientData) =>
+            {
+                if (clientData == null)
+                    return Results.BadRequest("Неверные данные");
+
+                PostgresContext db = new PostgresContext();
+                var client = await db.Clients.FirstOrDefaultAsync(c => c.ClientId == clientData.ClientId);
+
+                if (client == null)
+                    return Results.NotFound("Клиент не найден");
+
+                client.ClientName = clientData.Name;
+                client.ContactInfo = clientData.ContactInfo;
+
+                await db.SaveChangesAsync();
+                return Results.Ok("Обновление успешно");
+            });
+
+            app.MapGet("/employees", () =>
+            {
+                using var db = new PostgresContext();
+                var employees = db.Employees
+                    .Include(e => e.Store)
+                    .Select(e => new
+                    {
+                        EmployeeId = e.EmployeeId,
+                        Name = e.EmployeeName,
+                        StoreId = e.StoreId,
+                        StoreName = e.Store.StoreAddress,
+                        ContactInfo = e.ContactInfo
+                    })
+                    .ToList();
+
+                return Results.Json(employees);
+            });
+
+            app.MapPost("/employeesupdate", async (EmployeeDto empData) =>
+            {
+                if (empData == null)
+                    return Results.BadRequest("Неверные данные");
+
+                using var db = new PostgresContext();
+                var employee = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == empData.EmployeeId);
+
+                if (employee == null)
+                    return Results.NotFound("Сотрудник не найден");
+
+                employee.EmployeeName = empData.Name;
+                employee.ContactInfo = empData.ContactInfo;
+
+                await db.SaveChangesAsync();
+                return Results.Ok("Обновление успешно");
+            });
+
+            app.MapGet("/partners", () =>
+            {
+                using var db = new PostgresContext();
+                var partners = db.Partners
+                    .Select(p => new
+                    {
+                        PartnerId = p.PartnerId,
+                        Name = p.PartnerName,
+                        ContactInfo = p.ContactInfo
+                    })
+                    .ToList();
+
+                return Results.Json(partners);
+            });
+
+            app.MapPost("/partnersupdate", async (PartnerDto partnerData) =>
+            {
+                if (partnerData == null)
+                    return Results.BadRequest("Неверные данные");
+
+                using var db = new PostgresContext();
+                var partner = await db.Partners.FirstOrDefaultAsync(p => p.PartnerId == partnerData.PartnerId);
+
+                if (partner == null)
+                    return Results.NotFound("Партнёр не найден");
+
+                partner.PartnerName = partnerData.Name;
+                partner.ContactInfo = partnerData.ContactInfo;
+
+                await db.SaveChangesAsync();
+                return Results.Ok("Обновление успешно");
+            });
+
+            app.MapGet("/stores", () =>
+            {
+                using var db = new PostgresContext();
+                var stores = db.Stores
+                    .Select(s => new
+                    {
+                        StoreId = s.StoreId,
+                        Address = s.StoreAddress
+                    })
+                    .ToList();
+
+                return Results.Json(stores);
+            });
+
+            app.MapPost("/storesupdate", async (StoreDto storeData) =>
+            {
+                if (storeData == null)
+                    return Results.BadRequest("Неверные данные");
+
+                using var db = new PostgresContext();
+                var store = await db.Stores.FirstOrDefaultAsync(s => s.StoreId == storeData.StoreId);
+
+                if (store == null)
+                    return Results.NotFound("Магазин не найден");
+
+                store.StoreAddress = storeData.Address;
+
+                await db.SaveChangesAsync();
+                return Results.Ok("Обновление успешно");
+            });
 
         }
 
@@ -168,5 +338,39 @@ namespace StoreApi
     public DateTime? DeliveryDate { get; set; }
 }
 
+    public class WarehouseItem
+    {
+        public int Id { get; set; } // Не используется напрямую на сервере, но может быть нужен на клиенте
+        public string StoreName { get; set; }
+        public string ProductName { get; set; }
+        public int Quantity { get; set; }
+    }
+    public class ClientDto
+    {
+        public int ClientId { get; set; } // ClientId
+        public string Name { get; set; }
+        public string ContactInfo { get; set; }
+    }
+    public class EmployeeDto
+    {
+        public int EmployeeId { get; set; } // EmployeeId
+        public string Name { get; set; }
+        public int StoreId { get; set; } // Используется только при отображении
+        public string StoreName { get; set; }
+        public string ContactInfo { get; set; }
+    }
+
+    public class PartnerDto
+    {
+        public int PartnerId { get; set; } // PartnerId
+        public string Name { get; set; }
+        public string ContactInfo { get; set; }
+    }
+
+    public class StoreDto
+    {
+        public int StoreId { get; set; } // StoreId
+        public string Address { get; set; }
+    }
 
 }
